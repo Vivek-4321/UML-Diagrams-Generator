@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UML Use Case Diagram Creator</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Poppins", sans-serif;
+        scroll-behavior: smooth;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        list-style: none;
+        text-decoration: none;
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-dark) var(--color-primary);
+      }
+
+      :root {
+        --bg-color: #0e0f0e;
+        --text-color: #ffffff;
+        --input-bg: #1a1a1a;
+        --border-color: #3e3e3e;
+        --button-bg: #007bff;
+        --button-hover: #2795ea;
+        --shadow1: #0a0b0a;
+        --shadow2: #121412;
+      }
+
+      .light-theme {
+        --bg-color: #ffffff;
+        --text-color: #000000;
+        --input-bg: #f0f0f0;
+        --border-color: #cccccc;
+        --button-bg: #0078d4;
+        --button-hover: #005a9e;
+        --shadow1: #ffffff;
+        --shadow2: #ffffff;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 20px;
+        padding-top: 80px;
+        transition: background-color 0.3s, color 0.3s;
+      }
+      
+      .color-picker{
+        margin-top: 1rem;
+      }
+
+      #input {
+        width: 100%;
+        height: 200px;
+        background-color: var(--input-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        padding: 13px;
+        margin-bottom: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--input-bg) var(--bg-color);
+        border: 1px solid var(--bg-color);
+        border-radius: 0.5rem;
+        box-shadow:  20px 20px 60px var(--shadow1),
+  -20px -20px 60px var(--shadow2);
+      }
+      #canvas-container {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid gray;
+        border-radius: 0.5rem;
+        margin-top: 10px;
+        /* box-shadow:  20px 20px 60px var(--shadow1),
+  -20px -20px 60px var(--shadow2); */
+      }
+      #canvas {
+        cursor: move;
+      }
+      button {
+        background-color: var(--button-bg);
+        color: var(--text-color);
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-bottom: 10px;
+        border-radius: 0.5rem;
+        transition: all  0.3s ease-in-out;
+      }
+
+      button:active{
+        scale: 1.1;
+      }
+
+      button:hover {
+        background-color: var(--button-hover);
+      }
+      #color-picker {
+        margin-right: 10px;
+      }
+
+      #navbar-placeholder {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+    </style>
+  </head>
+  <body>
+    <textarea
+      id="input"
+      placeholder="Enter UML use case diagram syntax here"
+    ></textarea>
+    <button onclick="generateDiagram()">Generate Diagram</button>
+    <button onclick="downloadDiagram()">Download as PNG</button>
+    <button onclick="undo()">Undo</button>
+    <button onclick="redo()">Redo</button>
+    <button onclick="saveAsJSON()">Save as JSON</button>
+    <input
+      type="file"
+      id="load-json"
+      style="display: none"
+      onchange="loadJSON(event)"
+    />
+    <button onclick="document.getElementById('load-json').click()">
+      Load JSON
+    </button>
+    
+    <button id="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+    <input
+      type="color"
+      id="color-picker"
+      value="#ffffff"
+      onchange="changeColor(event)"
+    />
+    <br />
+    <div id="canvas-container">
+      <canvas id="canvas" width="1400" height="800"></canvas>
+    </div>
+
+    <div id="navbar-placeholder"></div>
+
+    <script>
+        fetch('navbar.html')
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('navbar-placeholder').innerHTML = data;
+                highlightCurrentPage();
+            });
+
+        function highlightCurrentPage() {
+            const currentPage = window.location.pathname.split('/').pop();
+            const navLinks = document.querySelectorAll('#main-navbar .nav-right a');
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPage) {
+                    link.classList.add('active');
+                }
+            });
+        }
+    </script>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      let elements = {};
+      let connections = [];
+      let isDragging = false;
+      let isResizing = false;
+      let isPanning = false;
+      let draggedElement = null;
+      let resizingElement = null;
+      let dragOffsetX = 0;
+      let dragOffsetY = 0;
+      let resizeHandle = "";
+      let zoom = 1;
+      let panX = 0;
+      let panY = 0;
+      let strokeColor = "#ffffff";
+      let undoStack = [];
+      let redoStack = [];
+
+      function toggleTheme() {
+        document.body.classList.toggle("light-theme");
+        updateCanvasBackground();
+      }
+
+      function updateCanvasBackground() {
+        const bgColor = getComputedStyle(document.body).getPropertyValue(
+          "--bg-color"
+        );
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawDiagram();
+      }
+
+      class UMLElement {
+        constructor(type, name, x, y) {
+          this.type = type;
+          this.name = name;
+          this.x = x;
+          this.y = y;
+          this.width = type === "usecase" ? 120 : type === "system" ? 200 : 60;
+          this.height = type === "system" ? 400 : 60;
+        }
+
+        draw(showResizeHandles = true) {
+          ctx.fillStyle = strokeColor;
+          ctx.strokeStyle = strokeColor;
+          ctx.font = `${14 * zoom}px Arial`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          switch (this.type) {
+            case "actor":
+              this.drawActor();
+              break;
+            case "usecase":
+              this.drawUseCase();
+              break;
+            case "system":
+              this.drawSystem(showResizeHandles);
+              break;
+          }
+        }
+
+        drawActor() {
+          const centerX = this.x + this.width / 2;
+          const centerY = this.y + 30;
+          const scale = 1;
+
+          // Head
+          ctx.beginPath();
+          ctx.arc(centerX, centerY - 15 * scale, 10 * scale, 0, 2 * Math.PI);
+          ctx.stroke();
+          // Body
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY - 5 * scale);
+          ctx.lineTo(centerX, centerY + 25 * scale);
+          // Arms
+          ctx.moveTo(centerX - 15 * scale, centerY + 10 * scale);
+          ctx.lineTo(centerX + 15 * scale, centerY + 10 * scale);
+          // Legs
+          ctx.moveTo(centerX, centerY + 25 * scale);
+          ctx.lineTo(centerX - 10 * scale, centerY + 45 * scale);
+          ctx.moveTo(centerX, centerY + 25 * scale);
+          ctx.lineTo(centerX + 10 * scale, centerY + 45 * scale);
+          ctx.stroke();
+          // Label
+          ctx.fillText(this.name, centerX, this.y + this.height + 20);
+        }
+
+        drawUseCase() {
+          const centerX = this.x + this.width / 2;
+          const centerY = this.y + this.height / 2;
+          const radiusX = this.width / 2;
+          const radiusY = this.height / 2;
+
+          ctx.beginPath();
+          ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+          ctx.stroke();
+
+          const words = this.name.split(" ");
+          let y = centerY - (words.length - 1) * 7;
+          words.forEach((word) => {
+            ctx.fillText(word, centerX, y);
+            y += 14;
+          });
+        }
+
+        drawSystem(showResizeHandles) {
+          ctx.strokeRect(this.x, this.y, this.width, this.height);
+          ctx.fillText(this.name, this.x + this.width / 2, this.y + 20);
+          if (showResizeHandles) {
+            this.drawResizeHandles();
+          }
+        }
+
+        drawResizeHandles() {
+          const handleSize = 8;
+          const handles = [
+            { x: this.x, y: this.y },
+            { x: this.x + this.width, y: this.y },
+            { x: this.x, y: this.y + this.height },
+            { x: this.x + this.width, y: this.y + this.height },
+          ];
+          ctx.fillStyle = strokeColor;
+          handles.forEach((handle) => {
+            ctx.fillRect(
+              handle.x - handleSize / 2,
+              handle.y - handleSize / 2,
+              handleSize,
+              handleSize
+            );
+          });
+        }
+
+        getConnectionPoint(targetElement) {
+          const thisCenter = {
+            x: this.x + this.width / 2,
+            y: this.y + this.height / 2,
+          };
+          const targetCenter = {
+            x: targetElement.x + targetElement.width / 2,
+            y: targetElement.y + targetElement.height / 2,
+          };
+
+          const angle = Math.atan2(
+            targetCenter.y - thisCenter.y,
+            targetCenter.x - thisCenter.x
+          );
+
+          if (this.type === "actor") {
+            return {
+              x: thisCenter.x + Math.cos(angle) * 30,
+              y: thisCenter.y + Math.sin(angle) * 30,
+            };
+          } else if (this.type === "usecase") {
+            return {
+              x: thisCenter.x + (Math.cos(angle) * this.width) / 2,
+              y: thisCenter.y + (Math.sin(angle) * this.height) / 2,
+            };
+          } else {
+            return thisCenter;
+          }
+        }
+
+        isPointInside(x, y) {
+          return (
+            x >= this.x &&
+            x <= this.x + this.width &&
+            y >= this.y &&
+            y <= this.y + this.height
+          );
+        }
+
+        getResizeHandle(x, y) {
+          const handleSize = 8;
+          const handles = [
+            { name: "nw", x: this.x, y: this.y },
+            { name: "ne", x: this.x + this.width, y: this.y },
+            { name: "sw", x: this.x, y: this.y + this.height },
+            { name: "se", x: this.x + this.width, y: this.y + this.height },
+          ];
+          for (const handle of handles) {
+            if (
+              Math.abs(x - handle.x) <= handleSize / 2 &&
+              Math.abs(y - handle.y) <= handleSize / 2
+            ) {
+              return handle.name;
+            }
+          }
+          return "";
+        }
+      }
+
+      class Connection {
+        constructor(from, to, type) {
+          this.from = from;
+          this.to = to;
+          this.type = type;
+        }
+
+        draw() {
+          if (!this.from || !this.to) {
+            console.error("Invalid connection:", this);
+            return;
+          }
+
+          let startPoint, endPoint;
+
+          try {
+            startPoint = this.from.getConnectionPoint(this.to);
+            endPoint = this.to.getConnectionPoint(this.from);
+          } catch (error) {
+            console.error("Error getting connection points:", error);
+            return;
+          }
+
+          if (!startPoint || !endPoint) {
+            console.error("Invalid connection points:", startPoint, endPoint);
+            return;
+          }
+
+          ctx.strokeStyle = strokeColor;
+          ctx.beginPath();
+          ctx.moveTo(startPoint.x, startPoint.y);
+
+          if (this.type === "include" || this.type === "extend") {
+            ctx.setLineDash([5, 5]);
+          } else {
+            ctx.setLineDash([]);
+          }
+
+          ctx.lineTo(endPoint.x, endPoint.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          this.drawArrow(startPoint, endPoint);
+
+          if (this.type === "include" || this.type === "extend") {
+            const midX = (startPoint.x + endPoint.x) / 2;
+            const midY = (startPoint.y + endPoint.y) / 2;
+            ctx.fillText(`<<${this.type}>>`, midX, midY - 10);
+          } else if (this.type === "generalization") {
+            this.drawGeneralizationArrow(startPoint, endPoint);
+          }
+        }
+
+        drawArrow(from, to) {
+          const angle = Math.atan2(to.y - from.y, to.x - from.x);
+          const headLength = 10;
+
+          ctx.beginPath();
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(
+            to.x - headLength * Math.cos(angle - Math.PI / 6),
+            to.y - headLength * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(
+            to.x - headLength * Math.cos(angle + Math.PI / 6),
+            to.y - headLength * Math.sin(angle + Math.PI / 6)
+          );
+          ctx.stroke();
+        }
+
+        drawGeneralizationArrow(from, to) {
+          const angle = Math.atan2(to.y - from.y, to.x - from.x);
+          const headLength = 15;
+
+          ctx.beginPath();
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(
+            to.x - headLength * Math.cos(angle - Math.PI / 6),
+            to.y - headLength * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.lineTo(
+            to.x - headLength * Math.cos(angle + Math.PI / 6),
+            to.y - headLength * Math.sin(angle + Math.PI / 6)
+          );
+          ctx.closePath();
+          ctx.fillStyle = strokeColor;
+          ctx.fill();
+        }
+      }
+
+      function generateDiagram() {
+        saveState();
+        const input = document.getElementById("input").value;
+        const lines = input.split("\n");
+
+        elements = {};
+        connections = [];
+
+        lines.forEach((line) => {
+          const [type, ...params] = line.trim().split(" ");
+          if (["actor", "usecase", "system"].includes(type)) {
+            let name, x, y, width, height;
+            if (type === "system") {
+              name = params.slice(0, -4).join(" ");
+              width = parseInt(params[params.length - 4]);
+              height = parseInt(params[params.length - 3]);
+              x = parseInt(params[params.length - 2]);
+              y = parseInt(params[params.length - 1]);
+              elements[name] = new UMLElement(type, name, x, y);
+              elements[name].width = width;
+              elements[name].height = height;
+            } else {
+              name = params.slice(0, -2).join(" ");
+              x = parseInt(params[params.length - 2]);
+              y = parseInt(params[params.length - 1]);
+              elements[name] = new UMLElement(type, name, x, y);
+            }
+          } else if (type === "connect") {
+            const [from, to, connectionType] = params.join(" ").split(" - ");
+            connections.push(
+              new Connection(
+                elements[from],
+                elements[to],
+                connectionType || "association"
+              )
+            );
+          }
+        });
+
+        drawDiagram();
+      }
+
+      UMLElement.prototype.isPointInsideSystem = function (x, y) {
+        return (
+          this.type === "system" &&
+          x >= this.x &&
+          x <= this.x + this.width &&
+          y >= this.y &&
+          y <= this.y + this.height
+        );
+      };
+
+      function drawDiagram(showResizeHandles = true) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue(
+          "--bg-color"
+        );
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(panX, panY);
+        ctx.scale(zoom, zoom);
+
+        // Draw systems first
+        Object.values(elements)
+          .filter((element) => element.type === "system")
+          .forEach((element) => element.draw(showResizeHandles));
+
+        // Then draw other elements
+        Object.values(elements)
+          .filter((element) => element.type !== "system")
+          .forEach((element) => element.draw(showResizeHandles));
+
+        connections.forEach((connection) => connection.draw());
+
+        ctx.restore();
+      }
+
+      function downloadDiagram() {
+        drawDiagram(false);
+        const link = document.createElement("a");
+        link.download = "uml_use_case_diagram.png";
+        link.href = canvas.toDataURL();
+        link.click();
+        drawDiagram(true);
+      }
+
+      function changeColor(event) {
+        saveState();
+        strokeColor = event.target.value;
+        drawDiagram();
+      }
+
+      function saveAsJSON() {
+        const input = document.getElementById("input").value;
+        const data = {
+          input,
+          elements,
+          connections: connections.map((conn) => ({
+            from: Object.keys(elements).find(
+              (key) => elements[key] === conn.from
+            ),
+            to: Object.keys(elements).find((key) => elements[key] === conn.to),
+            type: conn.type,
+          })),
+          zoom,
+          panX,
+          panY,
+          strokeColor,
+        };
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "uml_diagram.json";
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function loadJSON(event) {
+        const file = event.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            try {
+              const data = JSON.parse(e.target.result);
+
+              document.getElementById("input").value = data.input;
+
+              elements = {};
+              Object.entries(data.elements).forEach(([name, el]) => {
+                elements[name] = new UMLElement(el.type, el.name, el.x, el.y);
+                elements[name].width = el.width;
+                elements[name].height = el.height;
+              });
+              connections = data.connections.map(
+                (conn) =>
+                  new Connection(
+                    elements[conn.from],
+                    elements[conn.to],
+                    conn.type
+                  )
+              );
+              zoom = data.zoom || 1;
+              panX = data.panX || 0;
+              panY = data.panY || 0;
+              strokeColor = data.strokeColor || "#ffffff";
+              document.getElementById("color-picker").value = strokeColor;
+              drawDiagram();
+            } catch (error) {
+              console.error("Error loading JSON:", error);
+              alert("Error loading JSON file. Please check the file format.");
+            }
+          };
+          reader.readAsText(file);
+        }
+      }
+
+      function saveState() {
+        const state = {
+          elements: JSON.parse(JSON.stringify(elements)),
+          connections: connections.map((conn) => ({
+            from: Object.keys(elements).find(
+              (key) => elements[key] === conn.from
+            ),
+            to: Object.keys(elements).find((key) => elements[key] === conn.to),
+            type: conn.type,
+          })),
+          zoom,
+          panX,
+          panY,
+          strokeColor,
+        };
+        undoStack.push(state);
+        redoStack = [];
+      }
+
+      function undo() {
+        if (undoStack.length > 1) {
+          redoStack.push(undoStack.pop());
+          const prevState = undoStack[undoStack.length - 1];
+          loadState(prevState);
+        }
+      }
+
+      function redo() {
+        if (redoStack.length > 0) {
+          const nextState = redoStack.pop();
+          undoStack.push(nextState);
+          loadState(nextState);
+        }
+      }
+
+      function loadState(state) {
+        elements = {};
+        Object.entries(state.elements).forEach(([name, el]) => {
+          elements[name] = new UMLElement(el.type, el.name, el.x, el.y);
+          elements[name].width = el.width;
+          elements[name].height = el.height;
+        });
+        connections = state.connections.map(
+          (conn) =>
+            new Connection(elements[conn.from], elements[conn.to], conn.type)
+        );
+        zoom = state.zoom;
+        panX = state.panX;
+        panY = state.panY;
+        strokeColor = state.strokeColor;
+        document.getElementById("color-picker").value = strokeColor;
+        drawDiagram();
+      }
+
+      canvas.addEventListener("mousedown", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (e.ctrlKey) {
+          isPanning = true;
+          dragOffsetX = mouseX - panX;
+          dragOffsetY = mouseY - panY;
+          return;
+        }
+
+        isPanning = false;
+
+        const scaledMouseX = (mouseX - panX) / zoom;
+        const scaledMouseY = (mouseY - panY) / zoom;
+
+        // First, check for dragging non-system elements
+        for (const element of Object.values(elements)) {
+          if (
+            element.type !== "system" &&
+            element.isPointInside(scaledMouseX, scaledMouseY)
+          ) {
+            isDragging = true;
+            draggedElement = element;
+            dragOffsetX = scaledMouseX - element.x;
+            dragOffsetY = scaledMouseY - element.y;
+            return;
+          }
+        }
+
+        // Then check for system box resize
+        for (const element of Object.values(elements)) {
+          if (element.type === "system") {
+            resizeHandle = element.getResizeHandle(scaledMouseX, scaledMouseY);
+            if (resizeHandle) {
+              isResizing = true;
+              resizingElement = element;
+              return;
+            }
+          }
+        }
+
+        // Finally, check for dragging system elements
+        for (const element of Object.values(elements)) {
+          if (
+            element.type === "system" &&
+            element.isPointInside(scaledMouseX, scaledMouseY)
+          ) {
+            isDragging = true;
+            draggedElement = element;
+            dragOffsetX = scaledMouseX - element.x;
+            dragOffsetY = scaledMouseY - element.y;
+            return;
+          }
+        }
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const scaledMouseX = (mouseX - panX) / zoom;
+        const scaledMouseY = (mouseY - panY) / zoom;
+
+        if (isDragging && draggedElement) {
+          let newX = scaledMouseX - dragOffsetX;
+          let newY = scaledMouseY - dragOffsetY;
+
+          // Check if the dragged element is a use case
+          if (draggedElement.type === "usecase") {
+            // Check if the use case is inside any system box
+            const containingSystem = Object.values(elements).find(
+              (element) =>
+                element.type === "system" &&
+                newX >= element.x &&
+                newX <= element.x + element.width &&
+                newY >= element.y &&
+                newY <= element.y + element.height
+            );
+
+            if (containingSystem) {
+              // Constrain the movement within the system box
+              newX = Math.max(
+                containingSystem.x,
+                Math.min(
+                  newX,
+                  containingSystem.x +
+                    containingSystem.width -
+                    draggedElement.width
+                )
+              );
+              newY = Math.max(
+                containingSystem.y,
+                Math.min(
+                  newY,
+                  containingSystem.y +
+                    containingSystem.height -
+                    draggedElement.height
+                )
+              );
+            }
+          }
+
+          draggedElement.x = newX;
+          draggedElement.y = newY;
+          drawDiagram();
+        } else if (isResizing && resizingElement) {
+          const minSize = 50;
+          switch (resizeHandle) {
+            case "nw":
+              resizingElement.width = Math.max(
+                minSize,
+                resizingElement.x + resizingElement.width - scaledMouseX
+              );
+              resizingElement.height = Math.max(
+                minSize,
+                resizingElement.y + resizingElement.height - scaledMouseY
+              );
+              resizingElement.x = scaledMouseX;
+              resizingElement.y = scaledMouseY;
+              break;
+            case "ne":
+              resizingElement.width = Math.max(
+                minSize,
+                scaledMouseX - resizingElement.x
+              );
+              resizingElement.height = Math.max(
+                minSize,
+                resizingElement.y + resizingElement.height - scaledMouseY
+              );
+              resizingElement.y = scaledMouseY;
+              break;
+            case "sw":
+              resizingElement.width = Math.max(
+                minSize,
+                resizingElement.x + resizingElement.width - scaledMouseX
+              );
+              resizingElement.height = Math.max(
+                minSize,
+                scaledMouseY - resizingElement.y
+              );
+              resizingElement.x = scaledMouseX;
+              break;
+            case "se":
+              resizingElement.width = Math.max(
+                minSize,
+                scaledMouseX - resizingElement.x
+              );
+              resizingElement.height = Math.max(
+                minSize,
+                scaledMouseY - resizingElement.y
+              );
+              break;
+          }
+          drawDiagram();
+        } else if (isPanning) {
+          panX = mouseX - dragOffsetX;
+          panY = mouseY - dragOffsetY;
+          drawDiagram();
+        }
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        if (isDragging || isResizing || isPanning) {
+          saveState();
+        }
+        isDragging = false;
+        isResizing = false;
+        isPanning = false;
+        draggedElement = null;
+        resizingElement = null;
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        isDragging = false;
+        isResizing = false;
+        isPanning = false;
+        draggedElement = null;
+        resizingElement = null;
+      });
+
+      // Updated wheel event listener to only zoom when Ctrl key is pressed
+      canvas.addEventListener("wheel", (e) => {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          const rect = canvas.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+          const newZoom = zoom * zoomFactor;
+
+          if (newZoom > 0.1 && newZoom < 10) {
+            const zoomPoint = {
+              x: (mouseX - panX) / zoom,
+              y: (mouseY - panY) / zoom,
+            };
+
+            panX = mouseX - zoomPoint.x * newZoom;
+            panY = mouseY - zoomPoint.y * newZoom;
+            zoom = newZoom;
+
+            drawDiagram();
+          }
+        }
+      });
+
+      function handleKeyUp(e) {
+        if (!e.ctrlKey) {
+          isPanning = false;
+        }
+      }
+
+      document.addEventListener("keyup", handleKeyUp);
+      saveState();
+      drawDiagram();
+    </script>
+  </body>
+</html>

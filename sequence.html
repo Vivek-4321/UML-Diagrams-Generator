@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sequence Diagram Generator</title>
+    <style>
+        * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Poppins", sans-serif;
+        scroll-behavior: smooth;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        list-style: none;
+        text-decoration: none;
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-dark) var(--color-primary);
+      }
+
+      :root {
+        --bg-color: #0e0f0e;
+        --text-color: #ffffff;
+        --input-bg: #1a1a1a;
+        --border-color: #3e3e3e;
+        --button-bg: #007bff;
+        --button-hover: #2795ea;
+        --shadow1: #0a0b0a;
+        --shadow2: #121412;
+      }
+
+      .light-theme {
+        --bg-color: #ffffff;
+        --text-color: #000000;
+        --input-bg: #f0f0f0;
+        --border-color: #cccccc;
+        --button-bg: #0078d4;
+        --button-hover: #005a9e;
+        --shadow1: #ffffff;
+        --shadow2: #ffffff;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 20px;
+        padding-top: 80px;
+        transition: background-color 0.3s, color 0.3s;
+      }
+      
+      .color-picker{
+        margin-top: 1rem;
+      }
+
+        #input {
+        width: 100%;
+        height: 200px;
+        background-color: var(--input-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        padding: 13px;
+        margin-bottom: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--input-bg) var(--bg-color);
+        border: 1px solid var(--bg-color);
+        border-radius: 0.5rem;
+        box-shadow:  20px 20px 60px var(--shadow1),
+  -20px -20px 60px var(--shadow2);
+      }
+
+      #canvas {
+            position: relative;
+        overflow: hidden;
+        border: 1px solid gray;
+        border-radius: 0.5rem;
+        margin-top: -10px;
+        }
+        
+        button {
+        background-color: var(--button-bg);
+        color: var(--text-color);
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-bottom: 10px;
+        border-radius: 0.5rem;
+        transition: all  0.3s ease-in-out;
+      }
+
+      button:active{
+        scale: 1.1;
+      }
+
+      button:hover {
+        background-color: var(--button-hover);
+      }
+        #editForm {
+            position: absolute;
+            background-color: white;
+            border: 1px solid black;
+            padding: 10px;
+            display: none;
+        }
+        #editForm input {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        #themeSelect,
+        #lifelineColorPicker,
+        #messageColorPicker,
+        #boxColorPicker {
+            margin-right: 10px;
+        }
+
+        #themeSelect {
+            padding: 5px 10px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #themeSelect:hover {
+            background-color: var(--button-hover);
+        }
+
+        .color-picker-container {
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .color-picker-label {
+            font-size: 12px;
+            color: var(--text-color);
+            margin-right: 5px;
+        }
+
+        #navbar-placeholder {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <textarea id="input" placeholder="Enter sequence diagram syntax here"></textarea>
+    <button onclick="generateDiagram()">Generate Diagram</button>
+    <button onclick="downloadDiagram()">Download as PNG</button>
+    <button onclick="undo()">Undo</button>
+    <button onclick="redo()">Redo</button>
+    <button onclick="saveDiagram()">Save Diagram</button>
+    <button onclick="loadDiagram()">Load Diagram</button>
+    <input type="file" id="loadFile" style="display: none" onchange="handleFileSelect(event)">
+    <select id="themeSelect" onchange="changeTheme()">
+        <option value="light">Light Theme</option>
+        <option value="dark">Dark Theme</option>
+    </select>
+    <div class="color-picker-container">
+        <span class="color-picker-label">Lifeline:</span>
+        <input type="color" id="lifelineColorPicker" onchange="changeLifelineColor(this.value)" title="Lifeline Color">
+    </div>
+    <div class="color-picker-container">
+        <span class="color-picker-label">Message:</span>
+        <input type="color" id="messageColorPicker" onchange="changeMessageColor(this.value)" title="Message Color">
+    </div>
+    <div class="color-picker-container">
+        <span class="color-picker-label">Box:</span>
+        <input type="color" id="boxColorPicker" onchange="changeBoxColor(this.value)" title="Box Color">
+    </div>
+    <br><br>
+    <canvas id="canvas" width="1500" height="800"></canvas>
+
+    <div id="editForm">
+        <input type="text" id="editName" placeholder="Lifeline Name">
+        <input type="color" id="editBoxColor" title="Box Color">
+        <input type="number" id="editHeight" placeholder="Lifeline Height" min="30" step="10">
+        <button onclick="saveEdit()">Save</button>
+        <button onclick="cancelEdit()">Cancel</button>
+    </div>
+
+    <div id="navbar-placeholder"></div>
+
+    <script>
+        fetch('navbar.html')
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('navbar-placeholder').innerHTML = data;
+                highlightCurrentPage();
+            });
+
+        function highlightCurrentPage() {
+            const currentPage = window.location.pathname.split('/').pop();
+            const navLinks = document.querySelectorAll('#main-navbar .nav-right a');
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPage) {
+                    link.classList.add('active');
+                }
+            });
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let lifelines = [];
+        let messages = [];
+        let activations = [];
+        let loops = [];
+        let alts = [];
+        let isDragging = false;
+        let isPanning = false;
+        let isResizing = false;
+        let draggedLifeline = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let lastX = 0;
+        let lastY = 0;
+        let undoStack = [];
+        let redoStack = [];
+        let editingLifeline = null;
+        let lifelineColor = '#000000';
+        let messageColor = '#000000';
+        let boxColor = '#ffffff';
+
+        class Lifeline {
+            constructor(name, x, boxColor = '#ffffff', height = 600) {
+                this.name = name;
+                this.x = x;
+                this.y = 50;
+                this.width = 100;
+                this.height = height;
+                this.boxHeight = 30;
+                this.boxColor = boxColor;
+            }
+
+            draw() {
+                ctx.strokeStyle = lifelineColor;
+                ctx.fillStyle = this.boxColor;
+                ctx.lineWidth = 2;
+
+                // Draw lifeline box
+                ctx.fillRect(this.x, this.y, this.width, this.boxHeight);
+                ctx.strokeRect(this.x, this.y, this.width, this.boxHeight);
+
+                // Draw lifeline name
+                ctx.fillStyle = lifelineColor;
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.name, this.x + this.width / 2, this.y + this.boxHeight / 2);
+
+                // Draw dashed line
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(this.x + this.width / 2, this.y + this.boxHeight);
+                ctx.lineTo(this.x + this.width / 2, this.y + this.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw resize handle
+                ctx.fillStyle = lifelineColor;
+                ctx.fillRect(this.x + this.width / 2 - 5, this.y + this.height - 5, 10, 10);
+            }
+
+            isPointInside(x, y) {
+                return x >= this.x && x <= this.x + this.width && y >= this.y && y <= this.y + this.boxHeight;
+            }
+
+            isResizeHandleInside(x, y) {
+                return x >= this.x + this.width / 2 - 5 && x <= this.x + this.width / 2 + 5 &&
+                       y >= this.y + this.height - 5 && y <= this.y + this.height + 5;
+            }
+        }
+
+        class Message {
+            constructor(from, to, text, y, type = 'sync') {
+                this.from = from;
+                this.to = to;
+                this.text = text;
+                this.y = y;
+                this.type = type; // 'sync', 'async', 'return', or 'self'
+            }
+
+            draw() {
+                const fromX = this.from.x + this.from.width / 2;
+                let toX = this.to.x + this.to.width / 2;
+
+                ctx.strokeStyle = messageColor;
+                ctx.fillStyle = messageColor;
+                ctx.lineWidth = 2;
+
+                if (this.type === 'self') {
+                    // Draw self-message
+                    ctx.beginPath();
+                    ctx.moveTo(fromX, this.y);
+                    ctx.lineTo(fromX + 30, this.y);
+                    ctx.lineTo(fromX + 30, this.y + 20);
+                    ctx.lineTo(fromX, this.y + 20);
+                    ctx.stroke();
+
+                    // Draw arrowhead
+                    ctx.beginPath();
+                    ctx.moveTo(fromX, this.y + 20);
+                    ctx.lineTo(fromX - 5, this.y + 15);
+                    ctx.lineTo(fromX - 5, this.y + 25);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Draw message text
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(this.text, fromX + 35, this.y + 15);
+                } else {
+                    // Draw arrow
+                    ctx.beginPath();
+                    ctx.moveTo(fromX, this.y);
+                    ctx.lineTo(toX, this.y);
+                    ctx.stroke();
+
+                    // Draw arrowhead
+                    const arrowSize = 10;
+                    const angle = Math.atan2(0, toX - fromX);
+                    ctx.beginPath();
+                    ctx.moveTo(toX, this.y);
+
+                    if (this.type === 'async') {
+                        // Open arrowhead for async messages
+                        ctx.lineTo(toX - arrowSize * Math.cos(angle - Math.PI / 6), this.y - arrowSize * Math.sin(angle - Math.PI / 6));
+                        ctx.moveTo(toX, this.y);
+                        ctx.lineTo(toX - arrowSize * Math.cos(angle + Math.PI / 6), this.y - arrowSize * Math.sin(angle + Math.PI / 6));
+                    } else if (this.type === 'return') {
+                        // Dashed line for return messages
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        // Open arrowhead
+                        ctx.lineTo(toX - arrowSize * Math.cos(angle - Math.PI / 6), this.y - arrowSize * Math.sin(angle - Math.PI / 6));
+                        ctx.moveTo(toX, this.y);
+                        ctx.lineTo(toX - arrowSize * Math.cos(angle + Math.PI / 6), this.y - arrowSize * Math.sin(angle + Math.PI / 6));
+                    } else {
+                        // Filled arrowhead for sync messages
+                        ctx.lineTo(toX - arrowSize * Math.cos(angle - Math.PI / 6), this.y - arrowSize * Math.sin(angle - Math.PI / 6));
+                        ctx.lineTo(toX - arrowSize * Math.cos(angle + Math.PI / 6), this.y - arrowSize * Math.sin(angle + Math.PI / 6));
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+
+                    // Draw message text
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(this.text, (fromX + toX) / 2, this.y - 5);
+                }
+            }
+        }
+
+        class Activation {
+            constructor(lifeline, startY, endY) {
+                this.lifeline = lifeline;
+                this.startY = startY;
+                this.endY = endY;
+            }
+
+            draw() {
+                const x = this.lifeline.x + this.lifeline.width / 2 - 5;
+                ctx.fillStyle = '#e6e6e6';
+                ctx.fillRect(x, this.startY, 10, this.endY - this.startY);
+                ctx.strokeRect(x, this.startY, 10, this.endY - this.startY);
+            }
+        }
+
+        class Loop {
+            constructor(startY, endY, text) {
+        this.startY = startY;
+        this.endY = endY;
+        this.text = text;
+    }
+
+    draw() {
+        ctx.strokeStyle = messageColor;
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.3)';
+        ctx.lineWidth = 2;
+
+        const minX = Math.min(...lifelines.map(l => l.x));
+        const maxX = Math.max(...lifelines.map(l => l.x + l.width));
+
+        ctx.fillRect(minX - 10, this.startY, maxX - minX + 20, this.endY - this.startY);
+        ctx.strokeRect(minX - 10, this.startY, maxX - minX + 20, this.endY - this.startY);
+
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = messageColor;
+        
+        // Draw "loop" text in the top-left corner, but slightly offset
+        ctx.fillText(`loop ${this.text}`, minX - 5, this.startY + 5);
+        
+        // Draw a small white rectangle behind the text to improve readability
+        const textWidth = ctx.measureText(`loop ${this.text}`).width;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(minX - 7, this.startY + 3, textWidth + 4, 16);
+        
+        // Redraw the text
+        ctx.fillStyle = messageColor;
+        ctx.fillText(`loop ${this.text}`, minX - 5, this.startY + 5);
+    }
+        }
+
+        class Alt {
+            constructor(startY, endY, conditions) {
+        this.startY = startY;
+        this.endY = endY;
+        this.conditions = conditions;
+    }
+
+            draw() {
+        ctx.strokeStyle = messageColor;
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.3)';
+        ctx.lineWidth = 2;
+
+        const minX = Math.min(...lifelines.map(l => l.x));
+        const maxX = Math.max(...lifelines.map(l => l.x + l.width));
+        const width = maxX - minX + 20;
+        const height = this.endY - this.startY;
+
+        ctx.fillRect(minX - 10, this.startY, width, height);
+        ctx.strokeRect(minX - 10, this.startY, width, height);
+
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = messageColor;
+
+        // Draw "alt" text in the top-left corner, but slightly offset
+        ctx.fillText('alt', minX - 5, this.startY + 5);
+
+        // Draw a small white rectangle behind the text to improve readability
+        const textWidth = ctx.measureText('alt').width;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(minX - 7, this.startY + 3, textWidth + 4, 16);
+
+        // Redraw the text
+        ctx.fillStyle = messageColor;
+        ctx.fillText('alt', minX - 5, this.startY + 5);
+
+        const segmentHeight = height / this.conditions.length;
+        this.conditions.forEach((condition, index) => {
+            const segmentY = this.startY + segmentHeight * index;
+            ctx.beginPath();
+            ctx.moveTo(minX - 10, segmentY);
+            ctx.lineTo(maxX + 10, segmentY);
+            ctx.stroke();
+
+            // Draw condition text with improved visibility
+            const conditionText = index === 0 ? condition : `else ${condition}`;
+            const conditionTextWidth = ctx.measureText(conditionText).width;
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(minX - 7, segmentY + 3, conditionTextWidth + 4, 16);
+            
+            ctx.fillStyle = messageColor;
+            ctx.fillText(conditionText, minX - 5, segmentY + 5);
+        });
+    }
+        }
+
+        function generateDiagram() {
+        saveState();
+        const input = document.getElementById('input').value;
+        const lines = input.split('\n');
+
+        lifelines = [];
+        messages = [];
+        activations = [];
+        loops = [];
+        alts = [];
+
+        let y = 100;
+        let activeLifelines = new Map();
+        let currentLoop = null;
+        let currentAlt = null;
+        let altConditions = [];
+
+        lines.forEach(line => {
+            line = line.trim();
+            if (line.startsWith('lifeline')) {
+                const [_, name, x, color, height] = line.split(/\s+/);
+                lifelines.push(new Lifeline(name, parseInt(x), color, parseInt(height)));
+            } else if (line.startsWith('message')) {
+                const [_, type, from, to, ...textParts] = line.split(/\s+/);
+                const text = textParts.join(' ');
+                const fromLifeline = lifelines.find(l => l.name === from);
+                const toLifeline = lifelines.find(l => l.name === to);
+                if (fromLifeline && (toLifeline || type === 'self')) {
+                    if (type === 'self') {
+                        messages.push(new Message(fromLifeline, fromLifeline, text, y, 'self'));
+                    } else {
+                        messages.push(new Message(fromLifeline, toLifeline, text, y, type));
+                    }
+                    if (type !== 'return') {
+                        if (!activeLifelines.has(to)) {
+                            activeLifelines.set(to, y);
+                        }
+                    }
+                    y += 50;
+                }
+            } else if (line.startsWith('activate')) {
+                const [_, name] = line.split(/\s+/);
+                const lifeline = lifelines.find(l => l.name === name);
+                if (lifeline) {
+                    activeLifelines.set(name, y);
+                }
+            } else if (line.startsWith('deactivate')) {
+                const [_, name] = line.split(/\s+/);
+                const lifeline = lifelines.find(l => l.name === name);
+                if (lifeline && activeLifelines.has(name)) {
+                    const startY = activeLifelines.get(name);
+                    activations.push(new Activation(lifeline, startY, y));
+                    activeLifelines.delete(name);
+                }
+            } else if (line.startsWith('loop')) {
+                const [_, ...textParts] = line.split(/\s+/);
+                const text = textParts.join(' ');
+                currentLoop = { startY: y, text };
+                y += 20;
+            } else if (line === 'end loop' && currentLoop) {
+                loops.push(new Loop(currentLoop.startY, y, currentLoop.text));
+                currentLoop = null;
+                y += 20;
+            } else if (line.startsWith('alt')) {
+                const [_, ...textParts] = line.split(/\s+/);
+                const text = textParts.join(' ');
+                currentAlt = { startY: y };
+                altConditions = [text];
+                y += 20;
+            } else if (line.startsWith('else')) {
+                const [_, ...textParts] = line.split(/\s+/);
+                const text = textParts.join(' ');
+                if (currentAlt) {
+                    altConditions.push(text);
+                    y += 20;
+                }
+            } else if (line === 'end alt' && currentAlt) {
+                alts.push(new Alt(currentAlt.startY, y, altConditions));
+                currentAlt = null;
+                altConditions = [];
+                y += 20;
+            }
+        });
+
+        // Close any remaining activations
+        activeLifelines.forEach((startY, name) => {
+            const lifeline = lifelines.find(l => l.name === name);
+            activations.push(new Activation(lifeline, startY, y));
+        });
+
+        drawDiagram();
+    }
+
+    function drawDiagram() {
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Set canvas background based on theme
+        if (document.body.classList.contains('light-theme')) {
+                ctx.fillStyle = '#ffffff';
+            } else {
+                ctx.fillStyle = '#0e0f0e';
+            }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        loops.forEach(loop => loop.draw());
+        alts.forEach(alt => alt.draw());
+        activations.forEach(activation => activation.draw());
+        lifelines.forEach(lifeline => lifeline.draw());
+        messages.forEach(message => message.draw());
+
+        ctx.restore();
+    }
+
+    function downloadDiagram() {
+        const link = document.createElement('a');
+        link.download = 'sequence_diagram.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    }
+
+    function saveState() {
+        undoStack.push(JSON.stringify({ lifelines, messages, activations, loops, alts, offsetX, offsetY, scale }));
+        redoStack = [];
+    }
+
+    function undo() {
+        if (undoStack.length > 0) {
+            redoStack.push(JSON.stringify({ lifelines, messages, activations, loops, alts, offsetX, offsetY, scale }));
+            const previousState = JSON.parse(undoStack.pop());
+            ({ lifelines, messages, activations, loops, alts, offsetX, offsetY, scale } = previousState);
+            drawDiagram();
+        }
+    }
+
+    function redo() {
+        if (redoStack.length > 0) {
+            undoStack.push(JSON.stringify({ lifelines, messages, activations, loops, alts, offsetX, offsetY, scale }));
+            const nextState = JSON.parse(redoStack.pop());
+            ({ lifelines, messages, activations, loops, alts, offsetX, offsetY, scale } = nextState);
+            drawDiagram();
+        }
+    }
+
+    function saveDiagram() {
+        const data = JSON.stringify({
+            lifelines: lifelines.map(l => ({ name: l.name, x: l.x, boxColor: l.boxColor, height: l.height })),
+            messages: messages.map(m => ({ from: m.from.name, to: m.to.name, text: m.text, y: m.y, type: m.type })),
+            activations: activations.map(a => ({ lifeline: a.lifeline.name, startY: a.startY, endY: a.endY })),
+            loops: loops.map(l => ({ startY: l.startY, endY: l.endY, text: l.text })),
+            alts: alts.map(a => ({ startY: a.startY, endY: a.endY, conditions: a.conditions })),
+            offsetX,
+            offsetY,
+            scale
+        });
+
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'sequence_diagram.json';
+        link.click();
+    }
+
+    function loadDiagram() {
+        document.getElementById('loadFile').click();
+    }
+
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = JSON.parse(e.target.result);
+                offsetX = data.offsetX;
+                offsetY = data.offsetY;
+                scale = data.scale;
+
+                lifelines = data.lifelines.map(l => new Lifeline(l.name, l.x, l.boxColor, l.height));
+                messages = data.messages.map(m => {
+                    const fromLifeline = lifelines.find(l => l.name === m.from);
+                    const toLifeline = lifelines.find(l => l.name === m.to);
+                    return new Message(fromLifeline, toLifeline, m.text, m.y, m.type);
+                });
+                activations = data.activations.map(a => {
+                    const lifeline = lifelines.find(l => l.name === a.lifeline);
+                    return new Activation(lifeline, a.startY, a.endY);
+                });
+                loops = data.loops.map(l => new Loop(l.startY, l.endY, l.text));
+                alts = data.alts.map(a => new Alt(a.startY, a.endY, a.conditions));
+
+                // Generate sequence diagram syntax for the loaded diagram
+                const diagramSyntax = generateDiagramSyntax(lifelines, messages, activations, loops, alts);
+
+                // Set the generated syntax to the input textarea
+                document.getElementById('input').value = diagramSyntax;
+
+                drawDiagram();
+            };
+            reader.readAsText(file);
+        }
+    }
+
+    function generateDiagramSyntax(lifelines, messages, activations, loops, alts) {
+        let syntax = '';
+
+        // Generate lifeline definitions
+        lifelines.forEach(l => {
+            syntax += `lifeline ${l.name} ${Math.round(l.x)} ${l.boxColor} ${l.height}\n`;
+        });
+
+        syntax += '\n';
+
+        // Generate message, activation, loop, and alt definitions
+        let activeLifelines = new Set();
+        let currentY = 100;
+        let loopStack = [];
+        let altStack = [];
+
+        while (currentY <= Math.max(...messages.map(m => m.y), ...loops.map(l => l.endY), ...alts.map(a => a.endY))) {
+            const loopsStarting = loops.filter(l => l.startY === currentY);
+            const loopsEnding = loops.filter(l => l.endY === currentY);
+            const altsStarting = alts.filter(a => a.startY === currentY);
+            const altsEnding = alts.filter(a => a.endY === currentY);
+            const messagesAtY = messages.filter(m => m.y === currentY);
+            const activationsStarting = activations.filter(a => a.startY === currentY);
+            const activationsEnding = activations.filter(a => a.endY === currentY);
+
+            loopsStarting.forEach(loop => {
+                syntax += `loop ${loop.text}\n`;
+                loopStack.push(loop);
+            });
+
+            altsStarting.forEach(alt => {
+                syntax += `alt ${alt.conditions[0]}\n`;
+                altStack.push(alt);
+            });
+
+            activationsStarting.forEach(activation => {
+                syntax += `activate ${activation.lifeline.name}\n`;
+            });
+
+            messagesAtY.forEach(message => {
+                if (message.type === 'self') {
+                    syntax += `message self ${message.from.name} ${message.from.name} ${message.text}\n`;
+                } else {
+                    syntax += `message ${message.type} ${message.from.name} ${message.to.name} ${message.text}\n`;
+                }
+            });
+
+            activationsEnding.forEach(activation => {
+                syntax += `deactivate ${activation.lifeline.name}\n`;
+            });
+
+            if (altStack.length > 0 && altStack[altStack.length - 1].conditions.length > 1) {
+                const currentAlt = altStack[altStack.length - 1];
+                const currentConditionIndex = Math.floor((currentY - currentAlt.startY) / 20);
+                if (currentConditionIndex < currentAlt.conditions.length && currentY > currentAlt.startY) {
+                    syntax += `else ${currentAlt.conditions[currentConditionIndex]}\n`;
+                }
+            }
+
+            altsEnding.forEach(alt => {
+                syntax += `end alt\n`;
+                altStack.pop();
+            });
+
+            loopsEnding.forEach(loop => {
+                syntax += `end loop\n`;
+                loopStack.pop();
+            });
+
+            currentY += 20;
+        }
+
+        return syntax.trim();
+    }
+
+    function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.body.className = savedTheme + '-theme';
+            document.getElementById('themeSelect').value = savedTheme;
+            drawDiagram();
+        }
+
+        // Modify changeTheme function
+        function changeTheme() {
+            const newTheme = document.getElementById('themeSelect').value;
+            document.body.className = newTheme + '-theme';
+            localStorage.setItem('theme', newTheme);
+            drawDiagram();
+        }
+
+
+    function changeLifelineColor(color) {
+        lifelineColor = color;
+        drawDiagram();
+    }
+
+    function changeMessageColor(color) {
+        messageColor = color;
+        drawDiagram();
+    }
+
+    function changeBoxColor(color) {
+        boxColor = color;
+        drawDiagram();
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - offsetX) / scale;
+        const mouseY = (e.clientY - rect.top - offsetY) / scale;
+
+        if (e.buttons === 4 || (e.buttons === 1 && e.ctrlKey)) {
+            isPanning = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            return;
+        }
+
+        for (const lifeline of lifelines) {
+            if (lifeline.isPointInside(mouseX, mouseY)) {
+                if (e.detail === 2) {
+                    // Double click
+                    startEditing(lifeline);
+                } else {
+                    isDragging = true;
+                    draggedLifeline = lifeline;
+                    dragOffsetX = mouseX - lifeline.x;
+                }
+                return;
+            } else if (lifeline.isResizeHandleInside(mouseX, mouseY)) {
+                isResizing = true;
+                draggedLifeline = lifeline;
+                dragOffsetY = mouseY - lifeline.height;
+                return;
+            }
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - offsetX) / scale;
+        const mouseY = (e.clientY - rect.top - offsetY) / scale;
+
+        if (isPanning) {
+            offsetX += e.clientX - lastX;
+            offsetY += e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            drawDiagram();
+        } else if (isDragging && draggedLifeline) {
+            draggedLifeline.x = mouseX - dragOffsetX;
+            drawDiagram();
+        } else if (isResizing && draggedLifeline) {
+            draggedLifeline.height = Math.max(100, mouseY - dragOffsetY);
+            drawDiagram();
+        }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+        if (isDragging || isPanning || isResizing) {
+            saveState();
+        }
+        isDragging = false;
+        isPanning = false;
+        isResizing = false;
+        draggedLifeline = null;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+        isPanning = false;
+        isResizing = false;
+        draggedLifeline = null;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+        scale *= zoom;
+
+        offsetX = mouseX - (mouseX - offsetX) * zoom;
+        offsetY = mouseY - (mouseY - offsetY) * zoom;
+
+        drawDiagram();
+    }
+});
+
+    function startEditing(lifeline) {
+        editingLifeline = lifeline;
+        const form = document.getElementById('editForm');
+        form.style.display = 'block';
+        form.style.left = `${lifeline.x + offsetX}px`;
+        form.style.top = `${lifeline.y + offsetY}px`;
+        document.getElementById('editName').value = lifeline.name;
+        document.getElementById('editBoxColor').value = lifeline.boxColor;
+        document.getElementById('editHeight').value = lifeline.height;
+    }
+
+    function saveEdit() {
+        saveState();
+        editingLifeline.name = document.getElementById('editName').value;
+        editingLifeline.boxColor = document.getElementById('editBoxColor').value;
+        editingLifeline.height = parseInt(document.getElementById('editHeight').value);
+        cancelEdit();
+        drawDiagram();
+    }
+
+    function cancelEdit() {
+        document.getElementById('editForm').style.display = 'none';
+        editingLifeline = null;
+    }
+
+    function generateNewDiagram() {
+        const sampleDiagram = `
+lifeline User 100 #ffffff 600
+lifeline System 300 #ffffff 600
+lifeline Database 500 #ffffff 600
+
+message sync User System Login Request
+activate System
+message self System System Validate Input
+alt Valid Input
+    message sync System Database Query User
+    activate Database
+    message return Database System User Data
+    deactivate Database
+    message return System User Login Successful
+else Invalid Input
+    message return System User Login Failed
+end alt
+deactivate System
+
+loop Check Messages
+    message async User System Fetch Messages
+    activate System
+    message sync System Database Get Messages
+    activate Database
+    message return Database System Messages
+    deactivate Database
+    message return System User Display Messages
+    deactivate System
+end loop
+
+message self User User Process Messages
+`;
+
+        document.getElementById('input').value = sampleDiagram;
+        generateDiagram();
+    }
+
+     // Call initTheme on window load
+        window.onload = function() {
+            initTheme();
+            // generateNewDiagram(); // This will create a sample diagram on page load
+        };
+
+    // Initialize the diagram
+    changeTheme();
+    drawDiagram();
+</script>
+</body>
+</html>

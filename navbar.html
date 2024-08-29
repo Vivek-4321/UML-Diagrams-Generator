@@ -1,0 +1,41 @@
+<!-- navbar.html -->
+<nav id="main-navbar">
+    <div class="nav-left">
+        <span>UML Creator</span>
+    </div>
+    <div class="nav-right">
+        <a href="usecase.html" id="usecase-link">Use Case</a>
+        <a href="class.html" id="class-link">Class</a>
+        <a href="sequence.html" id="sequence-link">Sequence</a>
+    </div>
+</nav>
+
+<style>
+    #main-navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        padding: 20px 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    #main-navbar .nav-left {
+        font-weight: bold;
+    }
+
+    #main-navbar .nav-right a {
+        color: var(--text-color);
+        text-decoration: none;
+        margin-left: 20px;
+        padding: 5px 10px;
+        border-radius: 5px;
+        transition: background-color 0.3s;
+    }
+
+    #main-navbar .nav-right a:hover,
+    #main-navbar .nav-right a.active {
+        background-color: var(--button-hover);
+    }
+</style>

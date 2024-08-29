@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enhanced UML Class Diagram Creator</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Poppins", sans-serif;
+        scroll-behavior: smooth;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        list-style: none;
+        text-decoration: none;
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-dark) var(--color-primary);
+      }
+
+      :root {
+        --bg-color: #0e0f0e;
+        --text-color: #ffffff;
+        --input-bg: #1a1a1a;
+        --border-color: #3e3e3e;
+        --button-bg: #007bff;
+        --button-hover: #2795ea;
+        --shadow1: #0a0b0a;
+        --shadow2: #121412;
+      }
+
+      .light-theme {
+        --bg-color: #ffffff;
+        --text-color: #000000;
+        --input-bg: #f0f0f0;
+        --border-color: #cccccc;
+        --button-bg: #0078d4;
+        --button-hover: #005a9e;
+        --shadow1: #ffffff;
+        --shadow2: #ffffff;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 20px;
+        padding-top: 80px;
+        transition: background-color 0.3s, color 0.3s;
+      }
+
+      .color-picker {
+        margin-top: 1rem;
+      }
+
+      #input {
+        width: 100%;
+        height: 200px;
+        background-color: var(--input-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        padding: 13px;
+        margin-bottom: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--input-bg) var(--bg-color);
+        border: 1px solid var(--bg-color);
+        border-radius: 0.5rem;
+        box-shadow: 20px 20px 60px var(--shadow1),
+          -20px -20px 60px var(--shadow2);
+      }
+
+      #canvas {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid gray;
+        border-radius: 0.5rem;
+        margin-top: -10px;
+      }
+
+      button {
+        background-color: var(--button-bg);
+        color: var(--text-color);
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-bottom: 10px;
+        border-radius: 0.5rem;
+        transition: all 0.3s ease-in-out;
+      }
+
+      button:active {
+        scale: 1.1;
+      }
+
+      button:hover {
+        background-color: var(--button-hover);
+      }
+
+      #editForm {
+        position: absolute;
+        background-color: white;
+        border: 1px solid black;
+        padding: 10px;
+        display: none;
+      }
+      #editForm input,
+      #editForm textarea {
+        width: 100%;
+        margin-bottom: 10px;
+      }
+      #themeSelect,
+      #classColorPicker,
+      #connectionColorPicker {
+        margin-right: 10px;
+      }
+
+      #themeSelect {
+        padding: 5px 10px;
+        border-radius: 5px;
+        border: 1px solid var(--border-color);
+        background-color: var(--input-bg);
+        color: var(--text-color);
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      #themeSelect:hover {
+        background-color: var(--button-hover);
+      }
+
+      #navbar-placeholder {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+    </style>
+  </head>
+  <body>
+    <textarea
+      id="input"
+      placeholder="Enter UML class diagram syntax here"
+    ></textarea>
+    <button onclick="generateDiagram()">Generate Diagram</button>
+    <button onclick="downloadDiagram()">Download as PNG</button>
+    <button onclick="undo()">Undo</button>
+    <button onclick="redo()">Redo</button>
+    <button onclick="saveDiagram()">Save Diagram</button>
+    <button onclick="loadDiagram()">Load Diagram</button>
+    <input
+      type="file"
+      id="loadFile"
+      style="display: none"
+      onchange="handleFileSelect(event)"
+    />
+    <select id="themeSelect" onchange="changeTheme()">
+      <option value="light">Light Theme</option>
+      <option value="dark">Dark Theme</option>
+    </select>
+    <input
+      type="color"
+      id="classColorPicker"
+      onchange="changeClassColor(this.value)"
+    />
+    <input
+      type="color"
+      id="connectionColorPicker"
+      onchange="changeConnectionColor(this.value)"
+    />
+    <br /><br />
+    <canvas id="canvas" width="1440" height="800"></canvas>
+
+    <div id="editForm">
+      <input type="text" id="editName" placeholder="Class Name" />
+      <textarea
+        id="editAttributes"
+        placeholder="Attributes (one per line)"
+      ></textarea>
+      <textarea
+        id="editMethods"
+        placeholder="Methods (one per line)"
+      ></textarea>
+      <button onclick="saveEdit()">Save</button>
+      <button onclick="cancelEdit()">Cancel</button>
+    </div>
+
+    <div id="navbar-placeholder"></div>
+
+    <script>
+        fetch('navbar.html')
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById('navbar-placeholder').innerHTML = data;
+                highlightCurrentPage();
+            });
+
+        function highlightCurrentPage() {
+            const currentPage = window.location.pathname.split('/').pop();
+            const navLinks = document.querySelectorAll('#main-navbar .nav-right a');
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPage) {
+                    link.classList.add('active');
+                }
+            });
+        }
+    </script>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      let classes = {};
+      let connections = [];
+      let isDragging = false;
+      let isResizing = false;
+      let isPanning = false;
+      let draggedClass = null;
+      let resizingClass = null;
+      let dragOffsetX = 0;
+      let dragOffsetY = 0;
+      let resizeHandle = "";
+      let scale = 1;
+      let offsetX = 0;
+      let offsetY = 0;
+      let lastX = 0;
+      let lastY = 0;
+      let undoStack = [];
+      let redoStack = [];
+      let editingClass = null;
+      let classColor = "#ffffff";
+      let connectionColor = "#ffffff";
+
+      class UMLClass {
+        constructor(name, attributes, methods, x, y, width, height) {
+          this.name = name;
+          this.attributes = attributes;
+          this.methods = methods;
+          this.x = x;
+          this.y = y;
+          this.width = width || 200;
+          this.height = height || this.calculateHeight();
+        }
+
+        calculateHeight() {
+          return 30 + (this.attributes.length + this.methods.length) * 20;
+        }
+
+        draw(showResizeHandles = true) {
+          ctx.strokeStyle = classColor;
+          ctx.fillStyle = "transparent"; // Set fill color to transparent
+          ctx.font = "14px Arial";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+
+          // Class box (only stroke, no fill)
+          ctx.strokeRect(this.x, this.y, this.width, this.height);
+
+          // Class name
+          ctx.fillStyle = classColor; // Set text color to match stroke color
+          ctx.fillText(this.name, this.x + 5, this.y + 5);
+
+          // Separator lines
+          ctx.beginPath();
+          ctx.moveTo(this.x, this.y + 25);
+          ctx.lineTo(this.x + this.width, this.y + 25);
+          ctx.stroke();
+
+          // Attributes
+          let y = this.y + 30;
+          this.attributes.forEach((attr) => {
+            ctx.fillText(attr, this.x + 5, y);
+            y += 20;
+          });
+
+          // Separator line
+          ctx.beginPath();
+          ctx.moveTo(this.x, y);
+          ctx.lineTo(this.x + this.width, y);
+          ctx.stroke();
+
+          // Methods
+          y += 5;
+          this.methods.forEach((method) => {
+            ctx.fillText(method, this.x + 5, y);
+            y += 20;
+          });
+
+          if (showResizeHandles) {
+            this.drawResizeHandles();
+          }
+        }
+
+        drawResizeHandles() {
+          const handleSize = 8;
+          const handles = [
+            { x: this.x, y: this.y },
+            { x: this.x + this.width, y: this.y },
+            { x: this.x, y: this.y + this.height },
+            { x: this.x + this.width, y: this.y + this.height },
+          ];
+          ctx.fillStyle = classColor;
+          handles.forEach((handle) => {
+            ctx.fillRect(
+              handle.x - handleSize / 2,
+              handle.y - handleSize / 2,
+              handleSize,
+              handleSize
+            );
+          });
+        }
+
+        isPointInside(x, y) {
+          return (
+            x >= this.x &&
+            x <= this.x + this.width &&
+            y >= this.y &&
+            y <= this.y + this.height
+          );
+        }
+
+        getResizeHandle(x, y) {
+          const handleSize = 8;
+          const handles = [
+            { name: "nw", x: this.x, y: this.y },
+            { name: "ne", x: this.x + this.width, y: this.y },
+            { name: "sw", x: this.x, y: this.y + this.height },
+            { name: "se", x: this.x + this.width, y: this.y + this.height },
+          ];
+          for (const handle of handles) {
+            if (
+              Math.abs(x - handle.x) <= handleSize / 2 &&
+              Math.abs(y - handle.y) <= handleSize / 2
+            ) {
+              return handle.name;
+            }
+          }
+          return "";
+        }
+
+        toJSON() {
+          return {
+            name: this.name,
+            attributes: this.attributes,
+            methods: this.methods,
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height,
+          };
+        }
+
+        static fromJSON(json) {
+          return new UMLClass(
+            json.name,
+            json.attributes,
+            json.methods,
+            json.x,
+            json.y,
+            json.width,
+            json.height
+          );
+        }
+      }
+
+      class Connection {
+        constructor(from, to, type, style, fromMultiplicity, toMultiplicity) {
+          this.from = from;
+          this.to = to;
+          this.type = type;
+          this.style = style;
+          this.fromMultiplicity = fromMultiplicity;
+          this.toMultiplicity = toMultiplicity;
+        }
+
+        draw() {
+          ctx.strokeStyle = connectionColor;
+          ctx.beginPath();
+
+          const startPoint = this.getConnectionPoint(this.from, this.to);
+          const endPoint = this.getConnectionPoint(this.to, this.from);
+
+          if (this.style === "curved") {
+            const midX = (startPoint.x + endPoint.x) / 2;
+            const midY = (startPoint.y + endPoint.y) / 2;
+            const controlPoint1 = { x: midX, y: startPoint.y };
+            const controlPoint2 = { x: midX, y: endPoint.y };
+
+            ctx.moveTo(startPoint.x, startPoint.y);
+            ctx.bezierCurveTo(
+              controlPoint1.x,
+              controlPoint1.y,
+              controlPoint2.x,
+              controlPoint2.y,
+              endPoint.x,
+              endPoint.y
+            );
+          } else {
+            ctx.moveTo(startPoint.x, startPoint.y);
+            ctx.lineTo(endPoint.x, endPoint.y);
+          }
+
+          ctx.stroke();
+
+          //   this.drawArrow(endPoint, startPoint);
+          this.drawLabel(startPoint, endPoint);
+          this.drawMultiplicity(startPoint, endPoint);
+        }
+
+        getConnectionPoint(from, to) {
+          const centerX = from.x + from.width / 2;
+          const centerY = from.y + from.height / 2;
+
+          const angle = Math.atan2(to.y - from.y, to.x - from.x);
+
+          const dx = Math.cos(angle);
+          const dy = Math.sin(angle);
+
+          let x, y;
+
+          if (Math.abs(dx) > Math.abs(dy)) {
+            x = dx > 0 ? from.x + from.width : from.x;
+            y = centerY + (dy * (from.width / 2)) / Math.abs(dx);
+          } else {
+            x = centerX + (dx * (from.height / 2)) / Math.abs(dy);
+            y = dy > 0 ? from.y + from.height : from.y;
+          }
+
+          return { x, y };
+        }
+
+        drawArrow(from, to) {
+          const angle = Math.atan2(to.y - from.y, to.x - from.x);
+          const headLength = 15;
+          const headWidth = 10;
+
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+
+          switch (this.type) {
+            case "inheritance":
+              ctx.lineTo(
+                from.x - headLength * Math.cos(angle - Math.PI / 6),
+                from.y - headLength * Math.sin(angle - Math.PI / 6)
+              );
+              ctx.lineTo(
+                from.x - headLength * Math.cos(angle + Math.PI / 6),
+                from.y - headLength * Math.sin(angle + Math.PI / 6)
+              );
+              ctx.closePath();
+              ctx.fillStyle = connectionColor;
+              ctx.fill();
+              break;
+            case "aggregation":
+              this.drawDiamond(from, angle, false);
+              break;
+            case "composition":
+              this.drawDiamond(from, angle, true);
+              break;
+            case "dependency":
+              ctx.setLineDash([5, 5]);
+              ctx.moveTo(
+                from.x - headLength * Math.cos(angle - Math.PI / 6),
+                from.y - headLength * Math.sin(angle - Math.PI / 6)
+              );
+              ctx.lineTo(from.x, from.y);
+              ctx.lineTo(
+                from.x - headLength * Math.cos(angle + Math.PI / 6),
+                from.y - headLength * Math.sin(angle + Math.PI / 6)
+              );
+              ctx.setLineDash([]);
+              break;
+            default:
+              // Association
+              ctx.moveTo(
+                from.x - headLength * Math.cos(angle - Math.PI / 6),
+                from.y - headLength * Math.sin(angle - Math.PI / 6)
+              );
+              ctx.lineTo(from.x, from.y);
+              ctx.lineTo(
+                from.x - headLength * Math.cos(angle + Math.PI / 6),
+                from.y - headLength * Math.sin(angle + Math.PI / 6)
+              );
+          }
+
+          ctx.stroke();
+        }
+
+        drawDiamond(point, angle, filled) {
+          const size = 15;
+          ctx.beginPath();
+          ctx.moveTo(point.x, point.y);
+          ctx.lineTo(
+            point.x - size * Math.cos(angle - Math.PI / 6),
+            point.y - size * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.lineTo(
+            point.x - size * 2 * Math.cos(angle),
+            point.y - size * 2 * Math.sin(angle)
+          );
+          ctx.lineTo(
+            point.x - size * Math.cos(angle + Math.PI / 6),
+            point.y - size * Math.sin(angle + Math.PI / 6)
+          );
+          ctx.closePath();
+          if (filled) {
+            ctx.fillStyle = connectionColor;
+            ctx.fill();
+          }
+          ctx.stroke();
+        }
+
+        drawLabel(startPoint, endPoint) {
+          const midX = (startPoint.x + endPoint.x) / 2;
+          const midY = (startPoint.y + endPoint.y) / 2;
+          ctx.fillStyle = connectionColor;
+          ctx.font = "12px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(this.type, midX, midY - 10);
+        }
+
+        drawMultiplicity(startPoint, endPoint) {
+          ctx.fillStyle = connectionColor;
+          ctx.font = "12px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          if (this.fromMultiplicity) {
+            ctx.fillText(
+              this.fromMultiplicity,
+              startPoint.x + 15,
+              startPoint.y + 15
+            );
+          }
+          if (this.toMultiplicity) {
+            ctx.fillText(this.toMultiplicity, endPoint.x - 15, endPoint.y - 15);
+          }
+        }
+      }
+
+      function generateDiagram() {
+        saveState();
+        const input = document.getElementById("input").value;
+        const lines = input.split("\n");
+
+        classes = {};
+        connections = [];
+
+        let currentClass = null;
+        let currentSection = "";
+
+        lines.forEach((line) => {
+          line = line.trim();
+          if (line.startsWith("class")) {
+            const [_, name, x, y] = line.split(/\s+/);
+            currentClass = new UMLClass(name, [], [], parseInt(x), parseInt(y));
+            classes[name] = currentClass;
+            currentSection = "";
+          } else if (line === "attributes:") {
+            currentSection = "attributes";
+          } else if (line === "methods:") {
+            currentSection = "methods";
+          } else if (line.startsWith("connect")) {
+            const parts = line.split(/\s+/);
+            const from = parts[1];
+            const to = parts[2];
+            let type = "association";
+            let style = "straight";
+            let fromMultiplicity = "";
+            let toMultiplicity = "";
+
+            for (let i = 3; i < parts.length; i++) {
+              const part = parts[i];
+              if (
+                [
+                  "inheritance",
+                  "aggregation",
+                  "composition",
+                  "dependency",
+                ].includes(part)
+              ) {
+                type = part;
+              } else if (["straight", "curved"].includes(part)) {
+                style = part;
+              } else if (part.includes("*") || part.includes("1")) {
+                if (fromMultiplicity === "") {
+                  fromMultiplicity = part;
+                } else {
+                  toMultiplicity = part;
+                }
+              }
+            }
+
+            connections.push(
+              new Connection(
+                classes[from],
+                classes[to],
+                type,
+                style,
+                fromMultiplicity,
+                toMultiplicity
+              )
+            );
+          } else if (currentClass && line) {
+            if (currentSection === "attributes") {
+              currentClass.attributes.push(line);
+            } else if (currentSection === "methods") {
+              currentClass.methods.push(line);
+            }
+          }
+        });
+
+        Object.values(classes).forEach((cls) => {
+          cls.height = cls.calculateHeight();
+        });
+
+        drawDiagram();
+      }
+
+      function drawDiagram(showResizeHandles = true) {
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Set canvas background based on theme
+        if (document.body.classList.contains("light-theme")) {
+          ctx.fillStyle = "#ffffff";
+        } else {
+          ctx.fillStyle = "#0e0f0e";
+        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        connections.forEach((connection) => connection.draw());
+        Object.values(classes).forEach((cls) => cls.draw(showResizeHandles));
+
+        ctx.restore();
+      }
+
+      function downloadDiagram() {
+        drawDiagram(false);
+        const link = document.createElement("a");
+        link.download = "uml_class_diagram.png";
+        link.href = canvas.toDataURL();
+        link.click();
+        drawDiagram(true);
+      }
+
+      function saveState() {
+        undoStack.push(
+          JSON.stringify({ classes, connections, offsetX, offsetY, scale })
+        );
+        redoStack = [];
+      }
+
+      function undo() {
+        if (undoStack.length > 0) {
+          redoStack.push(
+            JSON.stringify({ classes, connections, offsetX, offsetY, scale })
+          );
+          const previousState = JSON.parse(undoStack.pop());
+          ({ classes, connections, offsetX, offsetY, scale } = previousState);
+          drawDiagram();
+        }
+      }
+
+      function redo() {
+        if (redoStack.length > 0) {
+          undoStack.push(
+            JSON.stringify({ classes, connections, offsetX, offsetY, scale })
+          );
+          const nextState = JSON.parse(redoStack.pop());
+          ({ classes, connections, offsetX, offsetY, scale } = nextState);
+          drawDiagram();
+        }
+      }
+
+      function saveDiagram() {
+        const classesData = {};
+        for (const [name, cls] of Object.entries(classes)) {
+          classesData[name] = cls.toJSON();
+        }
+
+        const connectionsData = connections.map((conn) => ({
+          from: conn.from.name,
+          to: conn.to.name,
+          type: conn.type,
+          style: conn.style,
+          fromMultiplicity: conn.fromMultiplicity,
+          toMultiplicity: conn.toMultiplicity,
+        }));
+
+        const data = JSON.stringify({
+          classes: classesData,
+          connections: connectionsData,
+          offsetX,
+          offsetY,
+          scale,
+        });
+
+        const blob = new Blob([data], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "uml_diagram.json";
+        link.click();
+      }
+
+      function loadDiagram() {
+        document.getElementById("loadFile").click();
+      }
+
+      function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const data = JSON.parse(e.target.result);
+            offsetX = data.offsetX;
+            offsetY = data.offsetY;
+            scale = data.scale;
+
+            classes = {};
+            for (const [name, classData] of Object.entries(data.classes)) {
+              classes[name] = UMLClass.fromJSON(classData);
+            }
+
+            connections = data.connections.map((conn) => {
+              return new Connection(
+                classes[conn.from],
+                classes[conn.to],
+                conn.type,
+                conn.style,
+                conn.fromMultiplicity,
+                conn.toMultiplicity
+              );
+            });
+
+            // Generate UML syntax for the loaded diagram
+            const umlSyntax = generateUMLSyntax(classes, connections);
+
+            // Set the generated UML syntax to the input textarea
+            document.getElementById("input").value = umlSyntax;
+
+            drawDiagram();
+          };
+          reader.readAsText(file);
+        }
+      }
+
+      function generateUMLSyntax(classes, connections) {
+        let syntax = "";
+
+        // Generate class definitions
+        for (const [name, cls] of Object.entries(classes)) {
+          syntax += `class ${name} ${Math.round(cls.x)} ${Math.round(cls.y)}\n`;
+          if (cls.attributes.length > 0) {
+            syntax += "attributes:\n";
+            cls.attributes.forEach((attr) => (syntax += attr + "\n"));
+          }
+          if (cls.methods.length > 0) {
+            syntax += "methods:\n";
+            cls.methods.forEach((method) => (syntax += method + "\n"));
+          }
+          syntax += "\n";
+        }
+
+        // Generate connection definitions
+        connections.forEach((conn) => {
+          syntax += `connect ${conn.from.name} ${conn.to.name} ${conn.type} ${conn.style}`;
+          if (conn.fromMultiplicity) syntax += ` ${conn.fromMultiplicity}`;
+          if (conn.toMultiplicity) syntax += ` ${conn.toMultiplicity}`;
+          syntax += "\n";
+        });
+
+        return syntax.trim();
+      }
+
+      function initTheme() {
+        const savedTheme = localStorage.getItem("theme") || "dark";
+        document.body.className = savedTheme + "-theme";
+        document.getElementById("themeSelect").value = savedTheme;
+        drawDiagram();
+      }
+
+      // Modify changeTheme function
+      function changeTheme() {
+        const newTheme = document.getElementById("themeSelect").value;
+        document.body.className = newTheme + "-theme";
+        localStorage.setItem("theme", newTheme);
+        drawDiagram();
+      }
+
+      function changeClassColor(color) {
+        classColor = color;
+        drawDiagram();
+      }
+
+      function changeConnectionColor(color) {
+        connectionColor = color;
+        drawDiagram();
+      }
+
+      canvas.addEventListener("mousedown", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - offsetX) / scale;
+        const mouseY = (e.clientY - rect.top - offsetY) / scale;
+
+        if (e.buttons === 4 || (e.buttons === 1 && e.ctrlKey)) {
+          isPanning = true;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          return;
+        }
+
+        for (const cls of Object.values(classes)) {
+          resizeHandle = cls.getResizeHandle(mouseX, mouseY);
+          if (resizeHandle) {
+            isResizing = true;
+            resizingClass = cls;
+            return;
+          }
+          if (cls.isPointInside(mouseX, mouseY)) {
+            if (e.detail === 2) {
+              // Double click
+              startEditing(cls);
+            } else {
+              isDragging = true;
+              draggedClass = cls;
+              dragOffsetX = mouseX - cls.x;
+              dragOffsetY = mouseY - cls.y;
+            }
+            return;
+          }
+        }
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - offsetX) / scale;
+        const mouseY = (e.clientY - rect.top - offsetY) / scale;
+
+        if (isPanning) {
+          offsetX += e.clientX - lastX;
+          offsetY += e.clientY - lastY;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          drawDiagram();
+        } else if (isDragging && draggedClass) {
+          draggedClass.x = mouseX - dragOffsetX;
+          draggedClass.y = mouseY - dragOffsetY;
+          drawDiagram();
+        } else if (isResizing && resizingClass) {
+          const minSize = 100;
+          switch (resizeHandle) {
+            case "nw":
+              resizingClass.width = Math.max(
+                minSize,
+                resizingClass.x + resizingClass.width - mouseX
+              );
+              resizingClass.height = Math.max(
+                minSize,
+                resizingClass.y + resizingClass.height - mouseY
+              );
+              resizingClass.x = mouseX;
+              resizingClass.y = mouseY;
+              break;
+            case "ne":
+              resizingClass.width = Math.max(minSize, mouseX - resizingClass.x);
+              resizingClass.height = Math.max(
+                minSize,
+                resizingClass.y + resizingClass.height - mouseY
+              );
+              resizingClass.y = mouseY;
+              break;
+            case "sw":
+              resizingClass.width = Math.max(
+                minSize,
+                resizingClass.x + resizingClass.width - mouseX
+              );
+              resizingClass.height = Math.max(
+                minSize,
+                mouseY - resizingClass.y
+              );
+              resizingClass.x = mouseX;
+              break;
+            case "se":
+              resizingClass.width = Math.max(minSize, mouseX - resizingClass.x);
+              resizingClass.height = Math.max(
+                minSize,
+                mouseY - resizingClass.y
+              );
+              break;
+          }
+          drawDiagram();
+        }
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        if (isDragging || isResizing || isPanning) {
+          saveState();
+        }
+        isDragging = false;
+        isResizing = false;
+        isPanning = false;
+        draggedClass = null;
+        resizingClass = null;
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        isDragging = false;
+        isResizing = false;
+        isPanning = false;
+        draggedClass = null;
+        resizingClass = null;
+      });
+
+      canvas.addEventListener("wheel", (e) => {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          const rect = canvas.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+          scale *= zoom;
+
+          offsetX = mouseX - (mouseX - offsetX) * zoom;
+          offsetY = mouseY - (mouseY - offsetY) * zoom;
+
+          drawDiagram();
+        }
+      });
+
+      function startEditing(cls) {
+        editingClass = cls;
+        const form = document.getElementById("editForm");
+        form.style.display = "block";
+        form.style.left = `${cls.x + offsetX}px`;
+        form.style.top = `${cls.y + offsetY}px`;
+        document.getElementById("editName").value = cls.name;
+        document.getElementById("editAttributes").value =
+          cls.attributes.join("\n");
+        document.getElementById("editMethods").value = cls.methods.join("\n");
+      }
+
+      function saveEdit() {
+        saveState();
+        editingClass.name = document.getElementById("editName").value;
+        editingClass.attributes = document
+          .getElementById("editAttributes")
+          .value.split("\n")
+          .filter((line) => line.trim() !== "");
+        editingClass.methods = document
+          .getElementById("editMethods")
+          .value.split("\n")
+          .filter((line) => line.trim() !== "");
+        editingClass.height = editingClass.calculateHeight();
+        cancelEdit();
+        drawDiagram();
+      }
+
+      function cancelEdit() {
+        document.getElementById("editForm").style.display = "none";
+        editingClass = null;
+      }
+
+      // Initialize the diagram
+      changeTheme();
+      drawDiagram();
+    </script>
+  </body>
+</html>
