@@ -1,0 +1,9 @@
+{
+    "routes": [
+      { "src": "/", "dest": "/index.html" },
+      { "src": "/usecase", "dest": "/usecase.html" },
+      { "src": "/sequence", "dest": "/sequence.html" },
+      { "src": "/navbar", "dest": "/navbar.html" },
+      { "src": "/(.*)", "dest": "/index.html" }
+    ]
+  }
